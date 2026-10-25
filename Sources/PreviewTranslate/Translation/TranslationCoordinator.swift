@@ -14,6 +14,11 @@ actor TranslationCoordinator {
     /// On-device runs at ~90 chars/s; cap what a single press can start.
     private let appleCharacterBudget = 2_500
 
+    /// Why the last Google attempt failed. Kept because `ReachabilityFlag` suppresses
+    /// Google for 60s after a failure — without this, the next press would skip Google
+    /// and report only that no fallback exists, hiding the actual cause.
+    private var lastGoogleFailure: Error?
+
     init(
         google: TranslationEngine = GoogleWebTranslator(),
         apple: AppleOnDeviceTranslator = AppleOnDeviceTranslator(),
@@ -31,26 +36,48 @@ actor TranslationCoordinator {
             do {
                 let pairs = try await google.translate(blocks, from: source)
                 await GoogleWebTranslator.reachability.recordSuccess()
+                lastGoogleFailure = nil
                 return TranslationOutcome(pairs: pairs, engineName: google.displayName)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                await GoogleWebTranslator.reachability.recordFailure()
+                // A 429 proves the host answered, so it must not mark Google unreachable:
+                // that would skip Google entirely on the next press and hide the cause.
+                if !GoogleWebTranslator.isRateLimited(error) {
+                    await GoogleWebTranslator.reachability.recordFailure()
+                }
+                lastGoogleFailure = error
             }
         }
 
-        guard AppleOnDeviceTranslator.isHardwareSupported else {
-            throw TranslationError.onDeviceUnsupportedHardware
+        let onDeviceAvailable = AppleOnDeviceTranslator.isHardwareSupported
+        var onDeviceFailure: String?
+
+        if onDeviceAvailable {
+            do {
+                try await apple.prepare()
+            } catch {
+                onDeviceFailure = error.localizedDescription
+            }
         }
 
-        do {
-            try await apple.prepare()
-        } catch {
-            throw TranslationError.allEnginesFailed("Google 번역에 연결할 수 없고, 한국어 온디바이스 번역 언어팩도 사용할 수 없습니다.")
+        if onDeviceAvailable, onDeviceFailure == nil {
+            let limited = CharacterBudget.fit(blocks, to: appleCharacterBudget)
+            let pairs = try await apple.translate(limited, from: source)
+            return TranslationOutcome(pairs: pairs, engineName: apple.displayName)
         }
 
-        let limited = CharacterBudget.fit(blocks, to: appleCharacterBudget)
-        let pairs = try await apple.translate(limited, from: source)
-        return TranslationOutcome(pairs: pairs, engineName: apple.displayName)
+        // Google is the only usable engine here, so its failure is the real reason —
+        // never let the missing fallback take its place in the message.
+        let primary = (lastGoogleFailure as? TranslationError)?.underlyingDetail
+            ?? lastGoogleFailure?.localizedDescription
+            ?? "Google 번역을 사용할 수 없습니다."
+        throw TranslationError.allEnginesFailed(
+            EngineDiagnosis.exhaustionDetail(
+                primaryFailure: primary,
+                onDeviceAvailable: onDeviceAvailable,
+                onDeviceFailure: onDeviceFailure
+            )
+        )
     }
 }

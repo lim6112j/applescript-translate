@@ -48,4 +48,11 @@ public enum TranslationError: LocalizedError {
             return "번역에 실패했습니다.\n\(detail)"
         }
     }
+
+    /// The detail without the generic "번역에 실패했습니다." prefix, for callers that
+    /// combine several failures into one message of their own.
+    public var underlyingDetail: String? {
+        if case .allEnginesFailed(let detail) = self { return detail }
+        return nil
+    }
 }

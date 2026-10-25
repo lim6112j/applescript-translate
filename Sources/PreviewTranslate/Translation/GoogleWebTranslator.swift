@@ -10,6 +10,8 @@ struct GoogleWebTranslator: TranslationEngine {
     private static let maxAttempts = 3
     private static let requestTimeout: TimeInterval = 8
     private static let baseRetryDelay: TimeInterval = 0.3
+    /// Rate limits need seconds, not milliseconds, before the next attempt can succeed.
+    private static let rateLimitRetryDelay: TimeInterval = 2.0
     private static let headingLengthLimit = 60
 
     /// Short and distinctive, so it is not throttled by the human-facing request limits.
@@ -99,12 +101,22 @@ struct GoogleWebTranslator: TranslationEngine {
             } catch {
                 lastError = error
                 if attempt < Self.maxAttempts - 1 {
-                    let delay = Self.baseRetryDelay * Double(attempt + 1)
+                    // A rate limit is not a transient blip: sub-second retries keep
+                    // tripping it. Back off for much longer so the next attempt can win.
+                    let delay = Self.isRateLimited(error)
+                        ? Self.rateLimitRetryDelay * Double(attempt + 1)
+                        : Self.baseRetryDelay * Double(attempt + 1)
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
             }
         }
         throw lastError
+    }
+
+    /// Rate limiting needs a very different backoff from a connection error, so the
+    /// classification lives in Core where it can be tested.
+    static func isRateLimited(_ error: Error) -> Bool {
+        EngineDiagnosis.isRateLimited(error)
     }
 
     private func requestOnce(_ chunk: String, from source: TranslationSourceLanguage) async throws -> [TranslationPair] {
