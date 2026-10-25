@@ -11,6 +11,8 @@ macOS 미리보기(Preview)에서 PDF를 읽다가 **⌥⌘T** 를 누르면 현
 - macOS 26 이상 (Apple 온디바이스 번역 프레임워크 사용)
 - Xcode 26 이상 (Swift 6.4)
 - 손쉬운 사용(Accessibility) 권한 — 미리보기의 현재 페이지를 읽기 위해 필요
+- 온디바이스 번역 대체 엔진은 **Apple 실리콘(M1 이상)** 에서만 동작합니다.
+  Intel Mac에서는 Google 번역만 사용할 수 있습니다 (아래 '번역 엔진' 참고).
 
 ## 설치
 
@@ -80,13 +82,26 @@ open /Applications/PreviewTranslate.app
 
 1. **Google 번역** — 페이지당 약 1초. 비공식 웹 엔드포인트를 사용합니다.
 2. **Apple 온디바이스 번역** — 네트워크가 없거나 Google이 막혔을 때 자동 대체.
-   완전히 오프라인이고 무료지만 이 Mac 기준 초당 약 90자라 페이지당 30~45초 걸립니다.
+   완전히 오프라인이고 무료지만 **Apple 실리콘(M1 이상)에서만** 동작합니다.
+   이 Mac 기준 초당 약 90자라 페이지당 30~45초 걸립니다.
    한 번에 약 2,500자까지만 번역합니다.
 
-강제로 온디바이스 엔진을 쓰려면:
+> Intel Mac에는 Neural Engine이 없어 Apple 온디바이스 번역을 쓸 수 없습니다.
+> `LanguageAvailability` 는 Intel에서도 언어쌍을 `supported` 로 보고하지만 실제로는
+> 언어팩이 설치되지 않아, 앱이 이를 감지해 "이 Mac에서는 Apple 온디바이스 번역을
+> 사용할 수 없습니다" 라고 안내합니다. 따라서 Intel Mac에서는 Google 번역이
+> 유일한 엔진이고, 네트워크가 없으면 번역할 수 없습니다.
+
+강제로 온디바이스 엔진을 쓰려면 (Apple 실리콘 전용):
 
 ```bash
 PREVIEWTRANSLATE_ENGINE=apple /Applications/PreviewTranslate.app/Contents/MacOS/PreviewTranslate &
+```
+
+시스템 프록시를 우회해 Google에 직접 연결하려면:
+
+```bash
+PREVIEWTRANSLATE_BYPASS_PROXY=1 /Applications/PreviewTranslate.app/Contents/MacOS/PreviewTranslate &
 ```
 
 ## 구조
@@ -118,10 +133,16 @@ swift build                    # 디버그 빌드
 
 ### 참고 사항
 
-- `Package.swift` 의 플랫폼은 `27.0` 이어야 합니다. SwiftPM은 이 값을 컴파일러에 넘기는
-  SDK 버전으로도 사용하는데, SDK를 26.0으로 빌드하면 `LanguageAvailability` 가 실제로 언어팩이
-  설치되어 있어도 `supported`(미설치)로 잘못 보고해서 온디바이스 번역이 동작하지 않습니다.
-- 시스템 PAC 프록시가 켜져 있으면 `URLSession.shared` 로 Google 번역이 타임아웃납니다.
-  그래서 Google 엔진은 프록시를 우회하는 전용 `URLSession` 을 씁니다.
+- `Package.swift` 의 플랫폼은 `26.0` 이어야 합니다. 이 값은 배포 대상(deployment target),
+  즉 실행 파일의 `minos` 가 되고, LaunchServices가 번들 실행 전에 이 값을 검사합니다.
+  실제 OS보다 높게 잡으면 실행 시 `kLSIncompatibleSystemVersionErr`(-10825,
+  "The app cannot run on the current OS version")로 **실행이 거부**됩니다.
+  SDK 버전은 이 값과 무관하게 Xcode의 최신 SDK(현재 26.5)가 쓰이므로
+  `LanguageAvailability` 동작에는 영향이 없습니다.
+  > 터미널에서 실행 파일을 직접 실행하면 이 검사를 건너뛰기 때문에 실행되는 것처럼 보입니다.
+  > Finder 더블클릭이나 `open` 으로 실행할 때만 실패합니다.
+- Google 엔진은 기본적으로 시스템 프록시 설정(PAC 포함)을 그대로 따릅니다. 인터넷이
+  프록시를 통해서만 나가는 네트워크에서는 이게 유일한 경로입니다. 반대로 PAC 프록시가
+  이 호스트를 막는 네트워크라면 `PREVIEWTRANSLATE_BYPASS_PROXY=1` 로 직접 연결합니다.
 - 미리보기는 선택 영역을 스크립트로 노출하지 않습니다. 그래서 '선택한 텍스트 번역' 대신
   페이지 단위로 번역합니다.

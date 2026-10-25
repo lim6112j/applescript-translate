@@ -39,6 +39,10 @@ actor TranslationCoordinator {
             }
         }
 
+        guard AppleOnDeviceTranslator.isHardwareSupported else {
+            throw TranslationError.onDeviceUnsupportedHardware
+        }
+
         do {
             try await apple.prepare()
         } catch {

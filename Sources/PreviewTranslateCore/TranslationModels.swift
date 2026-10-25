@@ -33,6 +33,7 @@ public struct TranslationOutcome: Sendable {
 public enum TranslationError: LocalizedError {
     case noTextOnPage
     case pageOutOfRange
+    case onDeviceUnsupportedHardware
     case allEnginesFailed(String)
 
     public var errorDescription: String? {
@@ -41,6 +42,8 @@ public enum TranslationError: LocalizedError {
             return "이 페이지에 번역할 텍스트가 없습니다.\n스캔한 이미지 PDF는 지원하지 않습니다."
         case .pageOutOfRange:
             return "페이지 번호가 문서 범위를 벗어났습니다."
+        case .onDeviceUnsupportedHardware:
+            return "이 Mac에서는 Apple 온디바이스 번역을 사용할 수 없습니다.\nApple 온디바이스 번역은 Apple 실리콘(M1 이상) Mac에서만 동작합니다."
         case .allEnginesFailed(let detail):
             return "번역에 실패했습니다.\n\(detail)"
         }

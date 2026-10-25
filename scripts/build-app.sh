@@ -22,7 +22,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$(swift build -c release --product "$APP_NAME" --show-bin-path)/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
-SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -E 'Developer ID Application|Apple Development' | sed -E 's/.*"(.*)"/\1/')"
+# `security` exits 0 with "0 valid identities found", and `grep` then exits 1, so the
+# pipeline must tolerate failure or `set -o pipefail` aborts the build before packaging.
+SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -E 'Developer ID Application|Apple Development' | sed -E 's/.*"(.*)"/\1/' || true)"
 
 if [ -n "$SIGNING_IDENTITY" ]; then
   codesign --force --sign "$SIGNING_IDENTITY" --identifier "$BUNDLE_ID" "$APP"

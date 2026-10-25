@@ -3,7 +3,9 @@ import PackageDescription
 
 let package = Package(
     name: "PreviewTranslate",
-    platforms: [.macOS("27.0")],
+    // The deployment target is what LaunchServices checks before launching the
+    // bundle, so it must not exceed the oldest macOS we intend to run on.
+    platforms: [.macOS("26.0")],
     products: [
         .executable(name: "PreviewTranslate", targets: ["PreviewTranslate"]),
         .library(name: "PreviewTranslateCore", targets: ["PreviewTranslateCore"]),

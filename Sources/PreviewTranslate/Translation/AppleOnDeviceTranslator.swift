@@ -7,6 +7,17 @@ import PreviewTranslateCore
 actor AppleOnDeviceTranslator: TranslationEngine {
     nonisolated var displayName: String { "Apple 온디바이스 번역" }
 
+    /// Apple's translation model runs on the Neural Engine, so it needs Apple silicon.
+    /// Intel Macs still report language pairs as `supported`, but the asset can never
+    /// install, so `prepareTranslation()` fails with `notInstalled` every time.
+    static var isHardwareSupported: Bool {
+        #if arch(arm64)
+        return true
+        #else
+        return false
+        #endif
+    }
+
     private let source = Locale.Language(identifier: "en")
     private let target = Locale.Language(identifier: "ko")
 
@@ -14,7 +25,8 @@ actor AppleOnDeviceTranslator: TranslationEngine {
 
     var isAvailable: Bool {
         get async {
-            await LanguageAvailability().status(from: source, to: target) == .installed
+            guard Self.isHardwareSupported else { return false }
+            return await LanguageAvailability().status(from: source, to: target) == .installed
         }
     }
 
@@ -36,9 +48,10 @@ actor AppleOnDeviceTranslator: TranslationEngine {
         try await preparedSession().translate(text).targetText
     }
 
-    /// Preparing also succeeds when `LanguageAvailability` reports the pair as merely
-    /// `supported` (it wakes the asset service), so it is the reliable readiness check.
+    /// Rejects unsupported hardware up front: on Intel the asset can never install, so
+    /// `prepareTranslation()` would only surface the opaque `notInstalled` error.
     func prepare() async throws {
+        guard Self.isHardwareSupported else { throw TranslationError.onDeviceUnsupportedHardware }
         _ = try await preparedSession()
     }
 

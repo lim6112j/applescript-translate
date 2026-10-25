@@ -17,14 +17,21 @@ struct GoogleWebTranslator: TranslationEngine {
 
     private let session: URLSession
 
-    init(session: URLSession? = nil) {
+    /// By default the system proxy settings (including a PAC file) are honoured, which
+    /// is the only route out on networks that reach the internet through a proxy. On a
+    /// network where the PAC proxy stalls this host, `PREVIEWTRANSLATE_BYPASS_PROXY=1`
+    /// connects directly instead.
+    init(
+        session: URLSession? = nil,
+        bypassSystemProxy: Bool = ProcessInfo.processInfo.environment["PREVIEWTRANSLATE_BYPASS_PROXY"] == "1"
+    ) {
         if let session {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            // The system PAC proxy stalls this host on some networks; the endpoint
-            // is reachable directly.
-            configuration.connectionProxyDictionary = [:]
+            if bypassSystemProxy {
+                configuration.connectionProxyDictionary = [:]
+            }
             configuration.httpMaximumConnectionsPerHost = Self.maxConcurrentRequests
             configuration.timeoutIntervalForRequest = Self.requestTimeout
             configuration.waitsForConnectivity = false
